@@ -1,0 +1,180 @@
+-- A preview of the table
+SELECT *
+FROM [ProjectDB].[dbo].[sales_data_sample];
+
+-- A look at distinct values in certain columns
+SELECT DISTINCT STATUS
+FROM [dbo].[sales_data_sample]; 
+
+SELECT DISTINCT ProductLine
+FROM [dbo].[sales_data_sample]; 
+
+SELECT DISTINCT Country
+FROM [dbo].[sales_data_sample]; 
+
+SELECT DISTINCT Year_ID
+FROM [dbo].[sales_data_sample];
+
+SELECT DISTINCT DealSize
+FROM [dbo].[sales_data_sample]; 
+
+SELECT DISTINCT TERRITORY
+FROM [dbo].[sales_data_sample]; 
+
+
+-- ANALYSIS
+
+-- Total revenue by product line
+SELECT ProductLine, SUM(sales) AS Revenue
+FROM [dbo].[sales_data_sample]
+GROUP BY ProductLine
+ORDER BY 2 DESC;
+
+-- Year with most sales--
+SELECT Year_ID, SUM(sales) AS Revenue_by_Year
+FROM [dbo].[sales_data_sample]
+GROUP BY Year_ID
+ORDER BY 2 DESC;
+
+-- 2005 came up with the least rev. I tried to investigate to find out why using the month ID column
+SELECT DISTINCT Month_ID
+FROM [dbo].[sales_data_sample]
+WHERE Year_ID = 2005; -- a check on all the other years showed 12 months except 2005 with operations for only 5 months
+
+-- Revenue from deals--
+SELECT DealSize, SUM(sales) AS Revenue_dy_deals
+FROM [dbo].[sales_data_sample]
+GROUP BY DealSize
+ORDER BY 2 DESC; -- The medium size deals raked in the most revenue
+
+-- Finding out which months in specific years has the highest sales revenue
+SELECT Month_ID, SUM(sales) AS MonthRevenue, COUNT(OrderNumber) AS Frequency
+FROM [dbo].[sales_data_sample]
+WHERE Year_ID = 2003
+GROUP BY Month_ID
+ORDER BY 2 DESC;
+-- November and October had the highest number of sales in 2003
+
+SELECT Month_ID, SUM(sales) AS MonthRevenue, COUNT(OrderNumber) AS Frequency
+FROM [dbo].[sales_data_sample]
+WHERE Year_ID = 2004
+GROUP BY Month_ID
+ORDER BY 2 DESC;
+
+SELECT MONTH_ID, SUM(sales) MonthRevenue, COUNT(OrderNumber) AS Frequency
+FROM [dbo].[sales_data_sample]
+WHERE Year_ID = 2005
+GROUP BY Month_ID
+ORDER BY 2 DESC;
+
+-- from the product like query, we found out the best product line to be classic cars.
+-- i am interested to see which product line was sold in the month of November which also came up as the best moth for 2003 and 2004
+
+SELECT Month_ID, ProductLine, SUM(sales) AS Revenue, COUNT(OrderNumber) AS Frequency
+FROM [dbo].[sales_data_sample]
+WHERE Year_ID = 2003 AND Month_ID = 11
+GROUP BY Month_ID, ProductLine
+ORDER BY 3 DESC;
+
+-- 2004 and 2005 reflects same result for product line
+
+-- RFM ANALYSIS
+--RFM means Recency, Frequency and Monetary
+-- It is an indexing technique that uses past purchase behaviour to segment customers
+-- An RFM report is a way of segmenting customers using 3 key metrics
+   -- Recency: how long ago their last purchase was
+   -- Frequency: how often they purchase and
+   -- Monetary value: how much they spent
+-- Doing an RFM analysis help know our customers and make decisions as to which one to keep or not
+
+DROP TABLE IF EXISTS #rfm 
+;WITH RFM AS
+(
+	SELECT
+		CustomerName,
+		SUM(sales) AS MonetaryValue,
+		SUM(sales) AS AverageMonetaryValue,
+		COUNT(OrderNumber) AS Frequency,
+		MAX(OrderDate) AS Last_Order_Date, -- To this level we have the last order date of each customer
+		(SELECT MAX(OrderDate) FROM [dbo].[sales_data_sample]) AS Max_order_date, -- this adds the last order date in the table
+		DATEDIFF(DD, MAX(OrderDate), (SELECT MAX(OrderDate) FROM [dbo].[sales_data_sample])) AS Recency -- based on the last order date in the table and last date of each customer, a recency column is generated
+	FROM [dbo].[sales_data_sample]
+	GROUP BY CustomerName
+),
+RFM_Calculation AS
+(
+		SELECT r.*,
+				NTILE(4) OVER (ORDER BY Recency) rfm_recency,
+				NTILE(4) OVER (ORDER BY Frequency) rfm_Frequency,
+				NTILE(4) OVER (ORDER BY MonetaryValue) rfm_Monetary
+		FROM RFM r
+)	
+
+SELECT 
+	c.*, rfm_recency + rfm_Frequency + rfm_Monetary AS rfm_column,
+	CAST (rfm_recency AS VARCHAR) + CAST (rfm_Frequency AS VARCHAR) + CAST (rfm_Monetary AS VARCHAR) AS rfm_string
+INTO #rfm -- temp table
+FROM RFM_Calculation AS c
+
+-- now lets run our newly created temp table #rfm
+SELECT *
+FROM #rfm;
+
+-- segmenting the customers 
+SELECT CustomerName, rfm_recency, rfm_Frequency, rfm_Monetary,
+	CASE
+		WHEN rfm_string IN (111,112,121, 122, 211, 212) THEN 'Not to keep Customers'
+		WHEN rfm_string IN (321,311,411) THEN 'New Customers' -- with potential of purchases
+		WHEN rfm_string IN (123,133,134,143,143,144,222,232,322,233,322) THEN  'Potential churners' 
+		WHEN rfm_string IN (243,244,323,322,332,333,344,411,412,422,423) THEN 'Active'
+		WHEN rfm_string IN (433,434,443,444) THEN 'Loyal'
+	END rfm_Segment
+FROM #rfm;
+
+
+-- City with highest sales in respective countries
+-- I will select Finland, United States and Australia 
+
+--FINLAND
+SELECT City, SUM(Sales) Revenue_CityFin
+FROM [dbo].[sales_data_sample]
+WHERE Country = 'Finland'
+GROUP BY City
+ORDER BY 2 DESC;
+
+--USA
+SELECT City, SUM(Sales) Revenue_CityUSA
+FROM [dbo].[sales_data_sample]
+WHERE Country = 'USA'
+GROUP BY City
+ORDER BY 2 DESC;
+
+--AUSTRALIA
+SELECT City, SUM(Sales) Revenue_CityAustralia
+FROM [dbo].[sales_data_sample]
+WHERE Country = 'Australia'
+GROUP BY City
+ORDER BY 2 DESC;
+
+-- i will go ahead to look for the best products in each of the 3 countries; Finland, United States and Australia
+
+-- FINLAND
+SELECT Country, Year_ID, ProductLine, SUM(Sales) AS Revenue
+FROM [dbo].[sales_data_sample]
+WHERE Country = 'Finland'
+GROUP BY Country, Year_ID, ProductLine
+ORDER BY 4 DESC;
+
+-- USA
+SELECT Country, Year_ID, ProductLine, SUM(Sales) AS Revenue
+FROM [dbo].[sales_data_sample]
+WHERE Country = 'USA'
+GROUP BY Country, Year_ID, ProductLine
+ORDER BY 4 DESC;
+
+-- AUSTRALIA
+SELECT Country, Year_ID, ProductLine, SUM(Sales) AS Revenue
+FROM [dbo].[sales_data_sample]
+WHERE Country = 'Australia'
+GROUP BY Country, Year_ID, ProductLine
+ORDER BY 4 DESC;
